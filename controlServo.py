@@ -9,10 +9,10 @@ TCP_IP = '192.168.128.174'
 TCP_PORT = 5011
 BUFFER_SIZE = 1024
 
-
-
+dutyPercent = 0
+ascending = True
 while True:
-	MESSAGE = "{\"Time\":\""+time.strftime("%H-%M-%S")+"\"}:"
+	MESSAGE = "{\"servo1\":"+str(dutyPercent)+"}:"
 	print MESSAGE;
 	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 	s.connect((TCP_IP, TCP_PORT))
@@ -20,5 +20,13 @@ while True:
 	data = s.recv(BUFFER_SIZE)
 	print str(data)
 	s.close()
-	time.sleep(5)
+	time.sleep(0.1)
+
+	if( (dutyPercent > 100) or (dutyPercent < 0) ):
+		ascending = not ascending
+	
+	if(ascending):
+		dutyPercent += 1
+	else:
+		dutyPercent -= 1
 

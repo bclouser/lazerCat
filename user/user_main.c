@@ -6,31 +6,11 @@
 #include "espconn.h"
 #include "user_interface.h"
 #include "user_config.h"
-#include "pwm.h"
+#include "messageHandler.h"
 
+/* non sdk includes */
+#include "servo.h"
 #include "secrets.h"
-
-/*Definition of GPIO PIN params, for GPIO initialization*/
-#define PWM_0_OUT_IO_MUX PERIPHS_IO_MUX_MTDI_U
-#define PWM_0_OUT_IO_NUM 12
-#define PWM_0_OUT_IO_FUNC  FUNC_GPIO12
-
-#define PWM_1_OUT_IO_MUX PERIPHS_IO_MUX_MTDO_U
-#define PWM_1_OUT_IO_NUM 15
-#define PWM_1_OUT_IO_FUNC  FUNC_GPIO15
-
-#define PWM_2_OUT_IO_MUX PERIPHS_IO_MUX_MTCK_U
-#define PWM_2_OUT_IO_NUM 13
-#define PWM_2_OUT_IO_FUNC  FUNC_GPIO13
-
-#define PWM_3_OUT_IO_MUX PERIPHS_IO_MUX_MTMS_U
-#define PWM_3_OUT_IO_NUM 14
-#define PWM_3_OUT_IO_FUNC  FUNC_GPIO14
-
-#define PWM_4_OUT_IO_MUX PERIPHS_IO_MUX_GPIO5_U
-#define PWM_4_OUT_IO_NUM 5
-#define PWM_4_OUT_IO_FUNC  FUNC_GPIO5
-
 
 
 #define user_procTaskPrio        0
@@ -50,32 +30,6 @@ char buffer[ 2048 ];
 bool wifiConnected = false;
 bool tcpServerUp = false;
 
-static volatile os_timer_t some_timer;
-
-
-int period = 1;
-bool ascend = true;
-
-void some_timerfunc(void *arg)
-{
-    pwm_set_period(period);
-    pwm_set_duty(500, 5);
-    pwm_start(); 
-
-    if( (period >= 1000) || (period <= 0) ){
-        ascend = (!ascend);
-    }
-
-    if(ascend){
-        os_printf("period = %d\n", period);
-        ++period;
-    }
-    else{
-        os_printf("period = %d\n", period);
-        --period;
-    }
-}
-
 
 void user_rf_pre_init( void )
 {
@@ -86,7 +40,11 @@ void server_received( void *arg, char *pdata, unsigned short len )
     struct espconn *conn = arg;
     
     os_printf( "%s: %s\n", __FUNCTION__, pdata );
-    
+
+    // parse message and process requests
+    if( !handleMessage(pdata) ){
+        os_printf("Well, we failed to handle message. bummer\n\r");
+    }
     espconn_disconnect( conn );
 }
 
@@ -223,35 +181,15 @@ void user_init( void )
     
     wifi_set_event_handler_cb( wifi_callback );
 
-    uint32 io_info[][3] = {   {PWM_0_OUT_IO_MUX,PWM_0_OUT_IO_FUNC,PWM_0_OUT_IO_NUM},
-                              {PWM_1_OUT_IO_MUX,PWM_1_OUT_IO_FUNC,PWM_1_OUT_IO_NUM},
-                              {PWM_2_OUT_IO_MUX,PWM_2_OUT_IO_FUNC,PWM_2_OUT_IO_NUM},
-                              {PWM_3_OUT_IO_MUX,PWM_3_OUT_IO_FUNC,PWM_3_OUT_IO_NUM},
-                              {PWM_4_OUT_IO_MUX,PWM_4_OUT_IO_FUNC,PWM_4_OUT_IO_NUM},
-                              };
-
-    uint32 pwm_duty_init[] = {1};
-    pwm_init(1, pwm_duty_init, 0, io_info );
-    //pwm_init(uint32 period, uint32 *duty,uint32 pwm_channel_num,uint32 (*pin_info_list)[3]);
-    //pwm_set_period(100);
-    //pwm_set_duty(2000, 1);
-    pwm_start(); 
-
-    //Disarm timer
-    os_timer_disarm(&some_timer);
-
-    //Setup timer
-    //os_timer_setfn(&some_timer, (os_timer_func_t *)some_timerfunc, NULL);
-
-    //Arm the timer
-    //&some_timer is the pointer
-    //1000 is the fire time in ms
-    //0 for once and 1 for repeating
-    //os_timer_arm(&some_timer, 10, 0);
+    initServo();
 }
 
 
-//Main code function
+
+
+
+
+//Main code function. Not currently being used
 static void ICACHE_FLASH_ATTR loop(os_event_t *events)
 {
     if(wifiConnected){
