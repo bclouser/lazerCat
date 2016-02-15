@@ -13,23 +13,7 @@
 #include "secrets.h"
 
 
-#define user_procTaskPrio        0
-#define user_procTaskQueueLen    2
-os_event_t user_procTaskQueue[user_procTaskQueueLen];
-
-
-static void loop(os_event_t *events);
-
-struct espconn our_conn;
-ip_addr_t our_ip;
-esp_tcp our_tcp;
-
-char json_data[ 256 ];
 char buffer[ 2048 ];
-
-bool wifiConnected = false;
-bool tcpServerUp = false;
-
 
 void user_rf_pre_init( void )
 {
@@ -45,6 +29,14 @@ void server_received( void *arg, char *pdata, unsigned short len )
     if( !handleMessage(pdata) ){
         os_printf("Well, we failed to handle message. bummer\n\r");
     }
+
+    if( isLazerOn() ){
+        turnLazerOff();
+    }
+    else{
+        turnLazerOn();
+    }
+
     espconn_disconnect( conn );
 }
 
@@ -68,9 +60,8 @@ tcp_connected( void *arg )
     espconn_regist_reconcb(conn, server_reconn);
     espconn_regist_disconcb(conn, server_disconn);
 
-    os_sprintf( buffer, "Ben Says hello");
+    os_sprintf( buffer, "Ben Says message received");
     
-    os_printf( "Sending: %s\n", buffer );
     espconn_sent( conn, buffer, os_strlen( buffer ) );
 }
 
@@ -81,7 +72,7 @@ void tcp_disconnected( void *arg )
     //wifi_station_disconnect();
 }
 
-initTcpServer(uint32 port)
+void initTcpServer(uint32 port)
 {
     os_printf( "%s\n", __FUNCTION__ );
     
@@ -96,10 +87,10 @@ initTcpServer(uint32 port)
     espconn_regist_connectcb(&esp_conn, tcp_connected);
     espconn_regist_disconcb( &esp_conn, tcp_disconnected );
     espconn_accept(&esp_conn);
-    tcpServerUp = true;
+    os_printf("Well, there is no error checking so i guess we assume it worked :/\n");
 }
 
-// We aren't requesting a dns lookup so this will not be called
+// We aren't requesting a dns lookup so this will never be called
 void dns_done( const char *name, ip_addr_t *ipaddr, void *arg )
 {
     os_printf( "%s\n", __FUNCTION__ );
@@ -114,7 +105,7 @@ void wifi_callback( System_Event_t *evt )
     {
         case EVENT_STAMODE_CONNECTED:
         {
-            os_printf("connect to ssid %s, channel %d\n",
+            os_printf("connected to ssid %s, channel %d\n",
                         evt->event_info.connected.ssid,
                         evt->event_info.connected.channel);
             break;
@@ -122,10 +113,11 @@ void wifi_callback( System_Event_t *evt )
 
         case EVENT_STAMODE_DISCONNECTED:
         {
-            os_printf("disconnect from ssid %s, reason %d\n",
+            os_printf("disconnected from ssid %s, reason %d\n",
                         evt->event_info.disconnected.ssid,
                         evt->event_info.disconnected.reason);
             
+            os_printf("Gunna take a minute long nap now\n");
             deep_sleep_set_option( 0 );
             system_deep_sleep( 60 * 1000 * 1000 );  // 60 seconds
             break;
@@ -138,12 +130,11 @@ void wifi_callback( System_Event_t *evt )
                         IP2STR(&evt->event_info.got_ip.mask),
                         IP2STR(&evt->event_info.got_ip.gw));
             os_printf("\n");
-            wifiConnected = true;
 
-            //Start os task
-            //system_os_task(loop, user_procTaskPrio,user_procTaskQueue, user_procTaskQueueLen);
-            //system_os_post(user_procTaskPrio, 0, 0 );
+            /* Food for thought: Publish or broadcast ip address to server so data providers can 
+            dynamically learn the ip address of this device. I guess i could use static ip #yuck */
 
+            // We got an IP address, get that tcp server setup!
             initTcpServer(5011);
 
             break;
@@ -168,58 +159,21 @@ void user_init( void )
     wifi_set_opmode_current( STATION_MODE );
 
     // Initialize the GPIO subsystem.
+    // Apparently this just needs to be called. Odd
     gpio_init();
-    //Set GPIO2 to output mode
-    PIN_FUNC_SELECT(PERIPHS_IO_MUX_GPIO2_U, FUNC_GPIO2);
-    //Set GPIO2 low
-    gpio_output_set(0, BIT2, BIT2, 0);
+
+    // Initialize ze lazer!!!!
+    // really not that cool, its just a gpio
+    initLazer();
     
     config.bssid_set = 0;
     os_memcpy( &config.ssid, WIFI_SSID, 32 );
     os_memcpy( &config.password, WIFI_PASSWD, 64 );
     wifi_station_set_config( &config );
     
+    // Generic callback which handles various wifi states
     wifi_set_event_handler_cb( wifi_callback );
 
+    // Init pwm modules which control the servo
     initServo();
-}
-
-
-
-
-
-
-//Main code function. Not currently being used
-static void ICACHE_FLASH_ATTR loop(os_event_t *events)
-{
-    if(wifiConnected){
-        // if we haven't yet created our tcp server. Bring it up!
-        if(!tcpServerUp){
-            initTcpServer(5011);
-        }
-        else
-        {
-            //os_printf("wifi connected and tcp server up\n\r");
-
-            //Do blinky stuff
-            if (GPIO_REG_READ(GPIO_OUT_ADDRESS) & BIT2)
-            {
-                //Set GPIO2 to LOW
-                //gpio_output_set(0, BIT2, BIT2, 0);
-                gpio_output_set(0, BIT2, BIT2, 0);
-            }
-            else
-            {
-                //Set GPIO2 to HIGH
-                gpio_output_set(BIT2, 0, BIT2, 0);
-            }
-            os_delay_us(1000000);
-        }
-    }
-    else{
-        os_printf("wifi not connected yet\n\r");
-        os_delay_us(5000000);
-    }
-
-    system_os_post(user_procTaskPrio, 0, 0 );
 }

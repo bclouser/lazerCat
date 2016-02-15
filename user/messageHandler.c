@@ -6,9 +6,10 @@
 
 #include "servo.h"
 
-
-
-
+/*This function needs to be cleaned up. I don't like that we are 
+ instructing the servos from within this function. Maybe do it in interface up one level?
+ This will change a lot in the future based on how our messages look
+ so i am going to leave it alone for now */
 bool handleMessage(char* messageBuf)
 {
 	struct jsonparse_state js;
@@ -17,16 +18,6 @@ bool handleMessage(char* messageBuf)
 	char buf[32] = {0};
 	int type = 0;
 	while( (type = jsonparse_next(&js)) != JSON_TYPE_ERROR){
-		/*
-		#define JSON_TYPE_ARRAY '['
-		#define JSON_TYPE_OBJECT '{'
-		#define JSON_TYPE_PAIR ':'
-		#define JSON_TYPE_PAIR_NAME 'N'
-		#define JSON_TYPE_STRING '"'
-		#define JSON_TYPE_INT 'I'
-		#define JSON_TYPE_NUMBER '0'
-		#define JSON_TYPE_ERROR 0
-		*/
 		switch(type){
 			case JSON_TYPE_ARRAY:
 				os_printf("type = JSON_TYPE_ARRAY\n");
